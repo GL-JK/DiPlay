@@ -786,4 +786,24 @@
     <string name="setup_badge_adb">Needs ADB over network</string>
     <string name="setup_done_title">You’re ready</string>
     <string name="setup_done_description">Connect your iPhone now. You can open this guide again from Settings.</string>
+
+    <!-- Connection progress (W6): seven visible steps of wireless/wired bring-up. -->
+    <string name="conn_step_mfi">Preparing MFi authentication</string>
+    <string name="conn_step_hotspot">Starting the car hotspot</string>
+    <string name="conn_step_wait_iphone">Waiting for the paired iPhone</string>
+    <string name="conn_step_bluetooth">Connecting Bluetooth</string>
+    <string name="conn_step_iap2">iAP2 authentication</string>
+    <string name="conn_step_airplay">Starting the AirPlay service</string>
+    <string name="conn_step_session">Establishing the CarPlay session</string>
+    <string name="conn_detail_mfi">Loading the local accessory identity</string>
+    <string name="conn_detail_hotspot">Waiting for the hotspot interface</string>
+    <string name="conn_detail_wait_iphone">Looking for your iPhone over Bluetooth</string>
+    <string name="conn_detail_bluetooth">Opening the RFCOMM channel</string>
+    <string name="conn_detail_iap2">Exchanging the certificate and signature</string>
+    <string name="conn_detail_airplay">Listening on port 7000 and publishing</string>
+    <string name="conn_detail_session">Waiting for the iPhone to open the video stream</string>
+    <string name="conn_step_counter">Step %1$d of %2$d</string>
+    <string name="conn_elapsed">%1$s s</string>
+    <string name="conn_progress_percent">%1$d%%</string>
+
 </resources>

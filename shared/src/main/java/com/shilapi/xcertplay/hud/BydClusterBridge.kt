@@ -47,7 +47,12 @@ internal object BydClusterBridge {
             }
         }
         available = adapter != null
-        if (!available && appContext.packageName.endsWith(".hudtest")) {
+        // The upstream suffix check exists to bench-test the factory route on a BYD car. Gate it on
+        // BYD firmware as well, otherwise any build with a .hudtest applicationId starts cluster
+        // broadcasts on a head unit that has no BYD navigation receiver at all.
+        if (!available && appContext.packageName.endsWith(".hudtest") &&
+            (BydOutputSettings.navigationAvailable(appContext) || BydOutputSettings.isBydFirmware())
+        ) {
             factory = BydFactoryNavigationOutput(appContext.applicationContext)
             available = true
         }

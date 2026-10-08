@@ -80,6 +80,7 @@ import com.shilapi.xcertplay.media.AndroidMediaSink
 import com.shilapi.xcertplay.media.CarPlayTouchMapper
 import com.shilapi.xcertplay.media.CarPlayVideoLayout
 import com.shilapi.xcertplay.network.CarPlayVpnService
+import com.shilapi.xcertplay.orchestration.ConnectionProgress
 import com.shilapi.xcertplay.orchestration.CarPlayController
 import com.shilapi.xcertplay.orchestration.CarPlayRuntimeConfig
 import com.shilapi.xcertplay.network.WirelessStartupFailure
@@ -300,6 +301,9 @@ class CarPlayHostActivity : ComponentActivity() {
     private var statusView: TextView? = null
     private var statusScrollView: ScrollView? = null
     private var stageStatusView: TextView? = null
+    private var connectionProgress: ConnectionProgressPanel? = null
+    private var progressClockRunning = false
+    private var lastProgressStep = 0
     private var resolutionValueView: TextView? = null
     private var resolutionPreviewView: TextView? = null
     private var hotspotStatusView: TextView? = null
@@ -1367,6 +1371,10 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        connectionProgress?.stop(mainHandler)
+        connectionProgress = null
+        progressClockRunning = false
+        lastProgressStep = 0
         resetSidePanel()
         hostAppearanceResumed = false
         AppAppearanceRuntime.clearHost(this)
@@ -1450,6 +1458,9 @@ class CarPlayHostActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
         panel.addView(stage)
+        val progressPanel = ConnectionProgressPanel(this, resources.displayMetrics.density)
+        connectionProgress = progressPanel
+        panel.addView(progressPanel.view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
         val instructions = TextView(this).apply {
             text = if (wirelessEnabled) getString(R.string.keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow)
                 else getString(R.string.use_a_usb_data_cable_and_unlock_your_iphone_allow_trust_an)
@@ -1498,6 +1509,7 @@ class CarPlayHostActivity : ComponentActivity() {
             stage.setTextColor(colors.text)
             instructions.setTextColor(colors.secondary)
             gestureHint.setTextColor(colors.secondary)
+            connectionProgress?.paint(darkMode)
             val buttonPalette = DiPlayPalette.of(darkMode)
             back.setTextColor(buttonPalette.onAccent)
             back.background = GradientDrawable().apply {
@@ -4053,6 +4065,7 @@ class CarPlayHostActivity : ComponentActivity() {
         updateHotspotStatus(status)
         val description = status.describe()
         setConnectionStage(description)
+        updateConnectionProgress(status)
         when (status) {
             is CarPlayStatus.Failed -> if (status.wifiResetRequired) {
                 wifiRecoveryButton?.visibility = View.VISIBLE
@@ -4978,6 +4991,20 @@ class CarPlayHostActivity : ComponentActivity() {
         latestStage = message
         stageStatusView?.text = friendlyStage(message)
         updateDebugOverlays()
+    }
+
+    /** W6: feed the same status stream into the step list, bar and clock. */
+    private fun updateConnectionProgress(status: CarPlayStatus) {
+        val panel = connectionProgress ?: return
+        // Start the clock once per attempt. A reconnect (step going backwards) restarts it;
+        // the four MFi statuses that share step 1 must not each reset the elapsed time.
+        val step = ConnectionProgress.step(status)
+        if (!progressClockRunning || step < lastProgressStep) {
+            panel.begin(mainHandler)
+            progressClockRunning = true
+        }
+        lastProgressStep = step
+        panel.update(status)
     }
 
     private fun updateDebugOverlays() {

@@ -151,6 +151,17 @@ object BydOutputSettings {
             installed(context, "com.ts.car.someip.service")
 
     /** Whether the head unit has a BYD navigation receiver or is a BYD head unit, so settings can show navigation/map options. */
+    /**
+     * True only on firmware that identifies itself as BYD. The debug applicationId suffix
+     * (".hudtest") is not evidence of a BYD car, so bench-only paths check this as well.
+     */
+    fun isBydFirmware(): Boolean =
+        android.os.Build.FINGERPRINT.contains("BYD", ignoreCase = true) ||
+            android.os.Build.BRAND.contains("BYD", ignoreCase = true) ||
+            android.os.Build.MANUFACTURER.contains("BYD", ignoreCase = true) ||
+            android.os.Build.PRODUCT.contains("BYD", ignoreCase = true) ||
+            android.os.Build.DEVICE.contains("BYD", ignoreCase = true)
+
     fun available(context: Context): Boolean =
         navigationAvailable(context) ||
             installed(context, "com.byd.carsettings") ||

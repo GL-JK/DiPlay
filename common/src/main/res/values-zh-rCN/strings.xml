@@ -749,4 +749,24 @@
     <string name="setup_badge_adb">需要网络 ADB</string>
     <string name="setup_done_title">准备就绪</string>
     <string name="setup_done_description">现在连接你的 iPhone。之后可在设置中再次打开本向导。</string>
+
+    <!-- Connection progress (W6): seven visible steps of wireless/wired bring-up. -->
+    <string name="conn_step_mfi">准备 MFi 认证</string>
+    <string name="conn_step_hotspot">启动车机热点</string>
+    <string name="conn_step_wait_iphone">等待已配对的 iPhone</string>
+    <string name="conn_step_bluetooth">连接蓝牙</string>
+    <string name="conn_step_iap2">iAP2 认证</string>
+    <string name="conn_step_airplay">启动 AirPlay 服务</string>
+    <string name="conn_step_session">建立 CarPlay 会话</string>
+    <string name="conn_detail_mfi">正在加载本地认证身份</string>
+    <string name="conn_detail_hotspot">等待热点接口就绪</string>
+    <string name="conn_detail_wait_iphone">正在通过蓝牙寻找你的 iPhone</string>
+    <string name="conn_detail_bluetooth">正在建立 RFCOMM 通道</string>
+    <string name="conn_detail_iap2">正在交换证书与挑战签名</string>
+    <string name="conn_detail_airplay">正在监听 7000 端口并广播</string>
+    <string name="conn_detail_session">正在等待 iPhone 接入视频流</string>
+    <string name="conn_step_counter">第 %1$d 步 / 共 %2$d 步</string>
+    <string name="conn_elapsed">%1$s 秒</string>
+    <string name="conn_progress_percent">%1$d%%</string>
+
 </resources>

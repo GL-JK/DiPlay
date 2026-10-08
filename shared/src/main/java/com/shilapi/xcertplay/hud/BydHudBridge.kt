@@ -27,6 +27,9 @@ internal object BydHudBridge {
     private const val TX_FIRE_EVENT = 6
     private const val ICON_ASSET_DIR = "byd-hud-icons"
 
+    /** A firmware without the BYD gateway never starts answering; give up after a few attempts. */
+    private const val MAX_FAILED_BINDS = 3
+
     private val callbacks = Executors.newSingleThreadExecutor { task ->
         Thread(task, "diplay-hud-callback").apply { isDaemon = true }
     }
@@ -37,6 +40,8 @@ internal object BydHudBridge {
     private var binding = false
     private var started = false
     private var senderStarted = false
+    /** Consecutive binder lookups that found no BYD gateway; stops the periodic retry. */
+    private var failedBinds = 0
     private var guidanceSentLogged = false
     private var showing = false
     private var lastSendResult: Int? = null
@@ -72,7 +77,8 @@ internal object BydHudBridge {
 
     fun initialize(appContext: Context) = synchronized(lock) {
         if (context == null) context = appContext.applicationContext
-        bindLocked()
+        // tick() performs the bounded bind attempts; nothing is bound here.
+        failedBinds = 0
         if (!senderStarted) {
             senderStarted = true
             Executors.newSingleThreadScheduledExecutor { runnable ->
@@ -104,7 +110,14 @@ internal object BydHudBridge {
     }
 
     private fun tick() = synchronized(lock) {
-        if (binder == null && !binding) bindLocked()
+        // The BYD SOME/IP gateway only exists on BYD head units. On any other firmware the binder
+        // lookup can never succeed, so stop retrying once it has failed a few times instead of
+        // querying a missing service every REPEAT_MILLIS for the whole session.
+        if (binder == null) {
+            if (failedBinds >= MAX_FAILED_BINDS) return
+            if (!binding) bindLocked()
+            return
+        }
         sendCurrentLocked()
     }
 
@@ -169,7 +182,8 @@ internal object BydHudBridge {
                 type = appContext.packageName
             }
             binding = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            Log.i(TAG, "bindService=$binding")
+            if (!binding) failedBinds++
+            Log.i(TAG, "bindService=$binding failedBinds=$failedBinds")
         } catch (error: Throwable) {
             binding = false
             Log.w(TAG, "cannot bind SOME/IP service", error)
