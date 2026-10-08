@@ -7,7 +7,9 @@ import android.os.ResultReceiver
 import android.provider.Settings
 import com.shilapi.xcertplay.adb.AdbKeys
 import com.shilapi.xcertplay.adb.LocalAdb
+import com.shilapi.xcertplay.adb.LocalAdbPorts
 import java.lang.reflect.InvocationTargetException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
@@ -36,21 +38,42 @@ object CarHotspotTethering {
     ): Result {
         val deadline = System.nanoTime() + timeoutMillis * 1_000_000L
         val observedAdbState = AtomicReference<Boolean?>()
+        val legacyAttempted = AtomicBoolean(false)
+        // API 28's built-in path: units that ship no tethering command (Wuling/SGMW Ling OS) still
+        // expose the legacy AP call. It runs before the ADB fallback so the local shell is needed for
+        // the permission grant only, not for every connection.
+        val legacyStart: () -> Boolean = {
+            if (!legacyAttempted.compareAndSet(false, true)) true
+            else CarHotspotWifiApEnable.start(
+                context,
+                deadline,
+                isCancelled,
+                state = { CarHotspotStatus.isEnabled(context) },
+                log = log,
+            ).also { if (it) observedAdbState.set(true) }
+        }
         val startReflection: (ResultReceiver) -> Unit = { receiver ->
             val service = ConnectivityManager::class.java.getDeclaredField("mService")
                 .apply { isAccessible = true }
                 .get(context.getSystemService(ConnectivityManager::class.java))
                 ?: throw NoSuchMethodException("Connectivity service unavailable")
-            service.javaClass.getMethod(
-                "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,
-                Boolean::class.javaPrimitiveType, String::class.java,
-            ).invoke(service, 0, receiver, false, context.packageName)
+            try {
+                service.javaClass.getMethod(
+                    "startTethering", Int::class.javaPrimitiveType, ResultReceiver::class.java,
+                    Boolean::class.javaPrimitiveType, String::class.java,
+                ).invoke(service, 0, receiver, false, context.packageName)
+            } catch (error: ReflectiveOperationException) {
+                // Legacy acceptance counts as a start and the poll below confirms the AP state;
+                // every other outcome keeps the original reflective diagnostic so the caller's
+                // ADB fallback still sees it.
+                if (!legacyStart()) throw error
+            }
         }
         val startAdb: () -> Boolean = {
             val client = AtomicReference<LocalAdb?>()
             CarHotspotAdbFallback.bounded(deadline, isCancelled,
                 abort = { client.get()?.cancelPendingOperations() }) {
-                val adb = LocalAdb(AdbKeys.load(context))
+                val adb = LocalAdb(AdbKeys.load(context), candidatePorts = LocalAdbPorts.candidates())
                 client.set(adb)
                 adb.use {
                     if (isCancelled() || Thread.currentThread().isInterrupted || System.nanoTime() >= deadline) false

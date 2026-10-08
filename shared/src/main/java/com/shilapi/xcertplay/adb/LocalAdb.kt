@@ -25,6 +25,7 @@ class LocalAdb(
     private val key: KeyPair,
     private val host: String = "127.0.0.1",
     private val port: Int = 5555,
+    private val candidatePorts: List<Int> = emptyList(),
 ) : Closeable {
     enum class Access { READY, NOT_APPROVED, UNREACHABLE, UNSUPPORTED }
 
@@ -38,25 +39,43 @@ class LocalAdb(
     fun connect(mayAsk: Boolean): Access {
         if (cancelled.get()) return Access.UNREACHABLE
         if (socket?.isClosed == false) return Access.READY
+        // A closed loopback port is refused immediately, so probing the vendor defaults costs a
+        // refused connection rather than a timeout. Ports that answered are never probed twice.
+        for (candidate in (listOf(port) + candidatePorts).distinct()) {
+            if (cancelled.get()) return Access.UNREACHABLE
+            val access = attempt(candidate, mayAsk)
+            if (access != null) return access
+        }
+        return Access.UNREACHABLE
+    }
+
+    /** Returns null only when this candidate's socket could not be opened at all. */
+    private fun attempt(target: Int, mayAsk: Boolean): Access? {
+        var opened = false
         return try {
-            val address = InetSocketAddress(host, port)
-            val opened = Socket().also { socket = it }.apply {
+            val address = InetSocketAddress(host, target)
+            val connected = Socket().apply {
                 if (cancelled.get()) throw IOException("ADB operation cancelled")
                 connect(address, CONNECT_TIMEOUT_MS)
+                opened = true
                 soTimeout = READ_TIMEOUT_MS
                 tcpNoDelay = true
             }
-            socket = opened
-            input = BufferedInputStream(opened.getInputStream())
-            output = opened.getOutputStream()
+            socket = connected
+            input = BufferedInputStream(connected.getInputStream())
+            output = connected.getOutputStream()
             send(AdbPacket(AdbPacket.CNXN, AdbPacket.VERSION, AdbPacket.MAX_PAYLOAD, "host::\u0000".toByteArray()))
             handshake(mayAsk).also { if (it != Access.READY) closeQuietly() }
         } catch (_: SocketTimeoutException) {
             closeQuietly()
-            if (mayAsk) Access.NOT_APPROVED else Access.UNREACHABLE
+            when {
+                !opened -> null
+                mayAsk -> Access.NOT_APPROVED
+                else -> Access.UNREACHABLE
+            }
         } catch (_: IOException) {
             closeQuietly()
-            Access.UNREACHABLE
+            if (opened) Access.UNREACHABLE else null
         }
     }
 

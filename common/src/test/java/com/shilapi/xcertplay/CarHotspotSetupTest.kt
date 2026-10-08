@@ -52,6 +52,13 @@ class CarHotspotSetupTest {
         assertFalse(CarHotspotSettings.visible(CarHotspotSetup.isBydHeadUnit(context), LocalAdb.Access.READY))
     }
 
+    @Test fun vendorCarHeadUnitMarkerReachesHotspotSetupWithoutBydPackages() {
+        ShadowBuild.setManufacturer("SGMW")
+        assertFalse(CarHotspotSetup.isBydHeadUnit(context))
+        assertTrue(CarHotspotSetup.hotspotSetupAvailable(context))
+        assertTrue(CarHotspotSettings.visible(CarHotspotSetup.hotspotSetupAvailable(context), LocalAdb.Access.READY))
+    }
+
     @Test fun existingNavigationBasedDetectionIsPreserved() {
         installPackage("com.byd.amapservice", system = true)
         assertTrue(BydOutputSettings.navigationAvailable(context))

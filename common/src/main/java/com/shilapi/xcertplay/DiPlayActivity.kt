@@ -2113,8 +2113,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun bydAdbSettings(parent: LinearLayout) {
         if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) return
-        if (!CarHotspotSetup.isBydHeadUnit(this)) {
-            Log.i("DiPlay-Hotspot", "settings hidden: BYD head unit not detected")
+        if (!CarHotspotSetup.hotspotSetupAvailable(this)) {
+            Log.i("DiPlay-Hotspot", "settings hidden: no reachable car head unit")
             return
         }
         if (searchIndexSink != null) {
@@ -2130,13 +2130,14 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         bydAdbControls = controls
         parent.addView(controls)
         Thread({
+            val available = CarHotspotSetup.hotspotSetupAvailable(applicationContext)
             val access = runCatching { CarHotspotSetup.check(applicationContext) }
                 .onFailure { Log.w("DiPlay-Hotspot", "settings ADB check failed", it) }
                 .getOrDefault(LocalAdb.Access.UNREACHABLE)
-            Log.i("DiPlay-Hotspot", "settings eligibility: byd=true adb=$access visible=${CarHotspotSettings.visible(true, access)}")
+            Log.i("DiPlay-Hotspot", "settings eligibility: available=$available adb=$access visible=${CarHotspotSettings.visible(available, access)}")
             runOnUiThread {
                 if (bydAdbControls !== controls || isFinishing || isDestroyed) return@runOnUiThread
-                if (CarHotspotSettings.visible(true, access)) {
+                if (CarHotspotSettings.visible(available, access)) {
                     controls.visibility = View.VISIBLE
                     renderBydAdbControls(controls, access)
                 }
