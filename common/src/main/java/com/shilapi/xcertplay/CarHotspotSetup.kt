@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.provider.Settings
 import android.util.Log
-import com.shilapi.xcertplay.adb.AdbKeys
 import com.shilapi.xcertplay.adb.LocalAdb
+import com.shilapi.xcertplay.adb.localAdb
 import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.ManualHotspotValidation
@@ -26,11 +26,11 @@ internal object CarHotspotSetup {
         }
     }
 
-    fun check(context: Context, adb: LocalAdb = LocalAdb(AdbKeys.load(context))): LocalAdb.Access = adb.use {
+    fun check(context: Context, adb: LocalAdb = localAdb(context)): LocalAdb.Access = adb.use {
         it.connect(mayAsk = false)
     }
 
-    fun grant(context: Context, permissions: List<Permission>, adb: LocalAdb = LocalAdb(AdbKeys.load(context))): LocalAdb.Access =
+    fun grant(context: Context, permissions: List<Permission>, adb: LocalAdb = localAdb(context)): LocalAdb.Access =
         adb.use {
             val access = it.connect(mayAsk = true)
             Log.i("DiPlay-ADB", "switch connection: $access")

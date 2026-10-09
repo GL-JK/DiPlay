@@ -41,6 +41,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.shilapi.xcertplay.adb.AdbPortSettings
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
@@ -1822,10 +1823,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     private fun bydAdbSettings(parent: LinearLayout) {
         if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) return
-        if (!CarHotspotSetup.isBydHeadUnit(this)) {
-            Log.i("DiPlay-Hotspot", "settings hidden: BYD head unit not detected")
-            return
-        }
         if (searchIndexSink != null) {
             // Index discoverable names without starting the asynchronous permission probe.
             searchIndexSink?.addAll(listOf(
@@ -1863,6 +1860,17 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             controls.visibility = View.GONE
             return
         }
+        // Manual local-adbd port (some firmwares, like the SGMW unit, move it off 5555).
+        controls.addView(button(
+            getString(R.string.adb_port_label) + " · " + AdbPortSettings.port(this), false) {
+            textInput(getString(R.string.adb_port_label), AdbPortSettings.port(this).toString(), false) { value ->
+                value.toIntOrNull()?.takeIf { it in 1..65535 }?.let { port ->
+                    AdbPortSettings.setPort(this, port)
+                    render()
+                }
+            }
+        })
+
         section(controls, getString(R.string.auto_car_hotspot_title), R.drawable.ic_dp_permissions) { card ->
             if (AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL) {
                 adbToggle(card, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,

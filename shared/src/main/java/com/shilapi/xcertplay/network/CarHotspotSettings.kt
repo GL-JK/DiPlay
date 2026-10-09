@@ -12,9 +12,12 @@ object CarHotspotSettings {
     fun setEnabled(context: Context, enabled: Boolean) =
         prefs(context).edit().putBoolean("auto_enable", enabled).apply()
 
-    // Visibility is independent of the saved choice: ADB is only needed to grant permission.
+    // Visible whenever a local adbd answered (or may still ask for approval), regardless of brand:
+    // the SGMW/other non-BYD units also need the ADB path for hotspot/channel reads. [bydAvailable]
+    // is retained for call-site compatibility and future brand-specific tuning.
+    @Suppress("UNUSED_PARAMETER")
     fun visible(bydAvailable: Boolean, access: LocalAdb.Access): Boolean =
-        bydAvailable && (access == LocalAdb.Access.READY || access == LocalAdb.Access.NOT_APPROVED)
+        access == LocalAdb.Access.READY || access == LocalAdb.Access.NOT_APPROVED
 
     fun shouldEnable(context: Context, wireless: Boolean, mode: WirelessHotspotMode): Boolean =
         enabled(context) && wireless && mode == WirelessHotspotMode.MANUAL
