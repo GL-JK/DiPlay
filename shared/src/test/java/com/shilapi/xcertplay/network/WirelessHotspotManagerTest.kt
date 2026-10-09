@@ -43,7 +43,7 @@ class WirelessHotspotManagerTest {
     }
 
     @Test
-    fun doesNotReportDesiredChannelWhenAndroidDoesNotExposeOne() {
+    fun doesNotReportAnyChannelWhenNothingIsKnown() {
         assertEquals(
             0,
             observedManualHotspotChannel(
@@ -51,6 +51,36 @@ class WirelessHotspotManagerTest {
                 connectionFrequencyMHz = null,
                 scanFrequencyMHz = null,
                 apFrequencyMHz = null,
+            ),
+        )
+    }
+
+    @Test
+    fun usesHostapdChannelBeforeTheConfiguredFallback() {
+        assertEquals(
+            165,
+            observedManualHotspotChannel(
+                apChannel = 0,
+                connectionFrequencyMHz = null,
+                scanFrequencyMHz = null,
+                apFrequencyMHz = null,
+                hostapdChannel = 165,
+                fallbackChannel = 36,
+            ),
+        )
+    }
+
+    @Test
+    fun usesTheConfiguredChannelWhenNothingElseIsKnown() {
+        // The AP is already running on the operator's configured channel; echoing it is truthful.
+        assertEquals(
+            165,
+            observedManualHotspotChannel(
+                apChannel = 0,
+                connectionFrequencyMHz = null,
+                scanFrequencyMHz = null,
+                apFrequencyMHz = null,
+                fallbackChannel = 165,
             ),
         )
     }

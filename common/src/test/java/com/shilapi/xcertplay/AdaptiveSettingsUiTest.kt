@@ -307,7 +307,7 @@ class AdaptiveSettingsUiTest {
 
     @Test
     @Config(shadows = [HotspotSearchProbe::class])
-    fun hotspotSearchKeepsTheBydAndCarHotspotAudienceGates() {
+    fun hotspotSearchKeepsTheManualHotspotAudienceGate() {
         installBydSettingsPackage()
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.EXISTING_WIFI)
         HotspotSearchProbe.workers.clear()
@@ -317,10 +317,12 @@ class AdaptiveSettingsUiTest {
             screen, "buildSettingsSearchIndex")
         val title = screen.getString(R.string.auto_car_hotspot_title)
 
+        // EXISTING_WIFI is not a manual-hotspot mode, so the entry is not offered.
         assertFalse(index().any { it.title == title })
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
         shadowOf(context.packageManager).removePackage("com.byd.carsettings")
-        assertFalse(index().any { it.title == title })
+        // MANUAL now offers the entry on any brand; adb availability is checked when opened, not when indexed.
+        assertTrue(index().any { it.title == title })
         assertTrue(HotspotSearchProbe.workers.isEmpty())
     }
 

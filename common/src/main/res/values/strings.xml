@@ -809,5 +809,13 @@
     <string name="conn_value">%1$s · %2$ss</string>
     <string name="conn_step_line">%1$s — %2$s</string>
 
+    <string name="read_car_hotspot">Read from car</string>
+    <string name="adb_port_label">Local ADB port</string>
+    <string name="adb_port_live">Probed: %1$d</string>
+    <string name="adb_endpoint_lan">LAN: %1$s</string>
+    <string name="adb_port_probe">Detect local ADB port</string>
+    <string name="read_car_hotspot_done">Hotspot info read from the car</string>
+    <string name="read_car_hotspot_failed">Could not read hotspot info (local ADB unavailable)</string>
+
     <string name="conn_connected">Connected</string>
 </resources>
