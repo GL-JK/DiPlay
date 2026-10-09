@@ -50,7 +50,7 @@ object CarHotspotTethering {
             val client = AtomicReference<LocalAdb?>()
             CarHotspotAdbFallback.bounded(deadline, isCancelled,
                 abort = { client.get()?.cancelPendingOperations() }) {
-                val adb = LocalAdb(AdbKeys.load(context))
+                val adb = LocalAdb(AdbKeys.load(context), candidatePorts = listOf(5557, 5556))
                 client.set(adb)
                 adb.use {
                     if (isCancelled() || Thread.currentThread().isInterrupted || System.nanoTime() >= deadline) false

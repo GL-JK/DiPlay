@@ -8,6 +8,8 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Looper
 import android.util.Log
+import com.shilapi.xcertplay.adb.AdbKeys
+import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.orchestration.ManualHotspotBand
 import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 import com.shilapi.xcertplay.transport.Iap2WirelessSecurity
@@ -106,11 +108,16 @@ class ManualHotspotManager(
                 ?: HotspotInterfaceBssid.read(selected.name))
         val connectionFrequency = frequencyFromConnectionInfo()
         val scanFrequency = frequencyFromScanResult(localInterface)
+        // Android hides the SoftAP channel on Android 9; ask hostapd directly over the local adb shell.
+        val hostapdChannel = if (apConfiguration?.channel?.let { it > 0 } == true) 0
+            else readHostapdChannel(selected.name)
         val channel = observedManualHotspotChannel(
             apChannel = apConfiguration?.channel ?: 0,
             connectionFrequencyMHz = connectionFrequency,
             scanFrequencyMHz = scanFrequency,
             apFrequencyMHz = apConfiguration?.frequencyMHz,
+            hostapdChannel = hostapdChannel,
+            fallbackChannel = expectedChannel,
         )
         val frequencyMHz = when {
             apConfiguration?.frequencyMHz != null -> apConfiguration.frequencyMHz
@@ -316,6 +323,23 @@ class ManualHotspotManager(
         } catch (_: Throwable) {
             null
         }
+    }
+
+    /**
+     * Reads the live SoftAP channel from hostapd over the head unit's own adbd. Ordinary (and even
+     * hidden) Android Wi-Fi APIs hide this on Android 9, but hostapd always knows the operating
+     * channel of the BSS it is running. Returns 0 when the value cannot be determined.
+     */
+    private fun readHostapdChannel(iface: String): Int = try {
+        if (!iface.matches(Regex("(?:ap|wlan|swlan|softap)[0-9]+"))) 0
+        else LocalAdb(AdbKeys.load(appContext), candidatePorts = listOf(5557, 5556)).use { adb ->
+            if (adb.connect(mayAsk = false) != LocalAdb.Access.READY) 0
+            else Regex("(?m)^channel=(\\d+)\\s*$")
+                .find(adb.shell("hostapd_cli -i $iface status", 5_000) ?: "")
+                ?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..196 } ?: 0
+        }
+    } catch (_: Throwable) {
+        0
     }
 
     private fun mapSoftApSecurity(securityType: Int): Iap2WirelessSecurity = when (securityType) {

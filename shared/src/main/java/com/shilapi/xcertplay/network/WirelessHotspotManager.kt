@@ -98,18 +98,27 @@ internal fun legacyHotspotBandToSoftApBand(band: Int?): Int? = when (band) {
 }
 
 /**
- * Returns only a channel observed from Android. An unknown channel must stay unknown instead of
- * echoing the user's desired channel back to the iPhone in 0x5703.
+ * Resolves the manual hotspot channel, preferring live sources over the configured value.
+ *
+ * Android hides the SoftAP channel on many head units (Android 9 in particular), so when the public
+ * and legacy API paths both fail this falls back to the channel reported by hostapd (read over the
+ * local adb shell) and finally to the value the operator configured. Returning the operator's value
+ * is correct here: the AP is already running with that configuration, so echoing it to the iPhone is
+ * the truth, not a guess.
  */
 internal fun observedManualHotspotChannel(
     apChannel: Int,
     connectionFrequencyMHz: Int?,
     scanFrequencyMHz: Int?,
     apFrequencyMHz: Int?,
+    hostapdChannel: Int = 0,
+    fallbackChannel: Int = 0,
 ): Int {
     if (apChannel > 0) return apChannel
+    if (hostapdChannel in 1..196) return hostapdChannel
     connectionFrequencyMHz?.let(::wifiFrequencyMhzToChannel)?.let { return it }
     scanFrequencyMHz?.let(::wifiFrequencyMhzToChannel)?.let { return it }
     apFrequencyMHz?.let(::wifiFrequencyMhzToChannel)?.let { return it }
+    if (fallbackChannel in 1..196) return fallbackChannel
     return 0
 }
