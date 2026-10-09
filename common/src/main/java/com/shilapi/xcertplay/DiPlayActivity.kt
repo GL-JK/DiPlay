@@ -41,6 +41,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.shilapi.xcertplay.adb.AdbPortSettings
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
@@ -186,6 +187,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var vehicleProbeOutcome: BydVehicleProbeOutcome? = null
     private var adbCheckGeneration = 0
     private var adbStatus: TextView? = null
+    /** The local-adbd port that last answered a probe, or null before any probe. */
+    private var adbProbeResult: Int? = null
     @Volatile private var updateStage = UpdateStage.IDLE
     @Volatile private var updateGeneration = 0
     @Volatile private var updateProgress: Int? = null
@@ -1821,18 +1824,16 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             !(CarHotspotSettings.enabled(this) && CarHotspotTethering.permitted(this))
 
     private fun bydAdbSettings(parent: LinearLayout) {
-        if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) return
-        if (!CarHotspotSetup.isBydHeadUnit(this)) {
-            Log.i("DiPlay-Hotspot", "settings hidden: BYD head unit not detected")
-            return
-        }
+        // ADB settings apply to every connection mode: reading the hotspot/channel and granting
+        // permissions are useful even when the hotspot is not opened by DiPlay (EXISTING_WIFI).
         if (searchIndexSink != null) {
-            // Index discoverable names without starting the asynchronous permission probe.
-            searchIndexSink?.addAll(listOf(
-                getString(R.string.auto_car_hotspot_title),
-                getString(R.string.auto_car_hotspot_title),
-                getString(R.string.btn_auto_apply_permissions),
-            ))
+            // Index discoverable names without starting the asynchronous permission probe. The port
+            // entry is always offered; the hotspot toggle only exists in the manual-hotspot mode.
+            searchIndexSink?.add(getString(R.string.adb_port_label))
+            if (AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL) {
+                searchIndexSink?.add(getString(R.string.auto_car_hotspot_title))
+                searchIndexSink?.add(getString(R.string.btn_auto_apply_permissions))
+            }
             return
         }
         val controls = column().apply { visibility = View.GONE }
@@ -1859,12 +1860,41 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         adbStatus = null
         controls.visibility = if (CarHotspotSettings.visible(true, access)) View.VISIBLE else View.GONE
         if (controls.visibility == View.GONE) return
-        if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) {
-            controls.visibility = View.GONE
-            return
+        val manualMode = AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL
+        // Local-adbd port, in its own card so the spacing matches every other section. Shows the real
+        // endpoint (loopback + LAN-facing address) and the port adbd actually listens on.
+        val endpoint = AdbPortSettings.endpoint(this)
+        section(controls, getString(R.string.adb_port_label), R.drawable.ic_dp_connection) { card ->
+            card.addView(button(
+                endpoint.loopbackText +
+                    (endpoint.lanText?.let { "\n" + getString(R.string.adb_endpoint_lan, it) } ?: ""), false) {
+                textInput(getString(R.string.adb_port_label), AdbPortSettings.port(this).toString(), false) { value ->
+                    value.toIntOrNull()?.takeIf { it in 1..65535 }?.let { port ->
+                        AdbPortSettings.setPort(this, port)
+                        adbProbeResult = null
+                        render()
+                    }
+                }
+            }, matchButton(0, 62))
+            card.addView(button(getString(R.string.adb_port_probe), false) {
+                adbProbeResult = null
+                render()
+                Thread {
+                    val found = AdbPortSettings.probe(this, mayAsk = true)
+                    runOnUiThread {
+                        adbProbeResult = found
+                        if (found != null) AdbPortSettings.setPort(this, found)
+                        render()
+                    }
+                }.apply { isDaemon = true }.start()
+            }, matchButton(8, 54))
+            adbProbeResult?.let { live ->
+                card.addView(label(getString(R.string.adb_port_live, live), 14, READY))
+            }
         }
+
         section(controls, getString(R.string.auto_car_hotspot_title), R.drawable.ic_dp_permissions) { card ->
-            if (AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL) {
+            if (manualMode) {
                 adbToggle(card, R.string.auto_car_hotspot_title, R.string.auto_car_hotspot_description,
                     read = { CarHotspotSettings.enabled(this) },
                     permissions = {
@@ -1881,6 +1911,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             }
             adbStatus = label(getString(if (access == LocalAdb.Access.READY)
                 R.string.adb_access_ready else R.string.adb_not_approved), 14, MUTED).also(card::addView)
+            // A visible entry point for the authorization check, available on any brand now that the
+            // settings are no longer BYD-gated. Non-BYD backends never reach the vehicle card.
+            card.addView(button(getString(R.string.check_adb_access), false) {
+                checkAdbAccessGeneric()
+            }.apply { isEnabled = !adbSwitchChangePending }, matchButton(10, 54))
             val allReady = UsbPermissionSetup.snapshot(this).values.all { it }
             if (!allReady) {
                 card.addView(button(getString(R.string.btn_auto_apply_permissions), false) { autoApplyPermissions() }, matchButton(8, 54))
@@ -3059,6 +3094,29 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     // The approval dialog can open only after an explicit user action.
+    /**
+     * Brand-neutral ADB authorization check used by the hotspot card. Probes the common local-adbd
+     * ports with an approval attempt, updates the port and the status line. Unlike [checkAdbState],
+     * this never depends on a BYD vehicle backend.
+     */
+    private fun checkAdbAccessGeneric() {
+        if (adbSwitchChangePending) return
+        adbSwitchChangePending = true
+        adbStatus?.setText(R.string.adb_checking_may_ask)
+        render()
+        val app = applicationContext
+        Thread {
+            val found = AdbPortSettings.probe(app, mayAsk = true)
+            runOnUiThread {
+                adbSwitchChangePending = false
+                adbProbeResult = found
+                if (found != null) AdbPortSettings.setPort(app, found)
+                render()
+                toast(getString(if (found != null) R.string.adb_access_ready else R.string.adb_check_failed))
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
     private fun checkAdbState(mayAsk: Boolean) {
         if (adbSwitchChangePending || vehicleAdbWorkInProgress()) return
         val legacy = BydOutputSettings.legacyVehicleProbe(this)
@@ -3555,9 +3613,20 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 android.text.InputType.TYPE_CLASS_TEXT
             }
         }
-        appDialogBuilder().setTitle(title).setView(input)
+        val dialog = appDialogBuilder().setTitle(title).setView(input)
             .setPositiveButton(getString(R.string.save)) { _, _ -> save(input.text.toString().let { if (secret) it else it.trim() }) }
-            .setNegativeButton(getString(R.string.cancel), null).show()
+            .setNegativeButton(getString(R.string.cancel), null).create()
+        // Some firmware window managers draw the dialog transparently when the activity theme is
+        // translucent; force an opaque, dimmed window and keep it above the settings surface.
+        dialog.window?.let { window ->
+            window.setBackgroundDrawableResource(
+                if ((this as? AppAppearanceOwner)?.currentAppNight ?: resolveAppNightNow())
+                    R.color.dialog_background_dark else R.color.dialog_background_light
+            )
+            window.setDimAmount(0.5f)
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dialog.show()
     }
 
     private fun resolutionSettingControl(

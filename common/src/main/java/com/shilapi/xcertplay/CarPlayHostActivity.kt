@@ -50,6 +50,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,6 +80,7 @@ import com.shilapi.xcertplay.location.AndroidCarPlayLocationProvider
 import com.shilapi.xcertplay.media.AndroidMediaSink
 import com.shilapi.xcertplay.media.CarPlayTouchMapper
 import com.shilapi.xcertplay.media.CarPlayVideoLayout
+import com.shilapi.xcertplay.network.CarHotspotConfigReader
 import com.shilapi.xcertplay.network.CarPlayVpnService
 import com.shilapi.xcertplay.orchestration.ConnectionProgress
 import com.shilapi.xcertplay.orchestration.CarPlayController
@@ -1685,6 +1687,20 @@ class CarPlayHostActivity : ComponentActivity() {
     private val MENU_BUTTON_TEXT: Int get() = overlayPalette.overlayOnAccent
     private val MENU_DANGER: Int get() = overlayPalette.overlayDanger
 
+    /** Rebuilds the settings menu in place, preserving scroll position. Used after a live reload. */
+    private fun reinstallSettingsMenu() {
+        val previous = settingsMenu ?: return
+        val parent = previous.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(previous)
+        val visible = previous.visibility
+        val scrollY = findDescendant<ScrollView>(previous)?.scrollY ?: 0
+        parent.removeView(previous)
+        val replacement = buildSettingsMenu().apply { visibility = visible }
+        settingsMenu = replacement
+        parent.addView(replacement, index, FrameLayout.LayoutParams(-1, -1))
+        replacement.post { findDescendant<ScrollView>(replacement)?.scrollTo(0, scrollY) }
+    }
+
     private fun refreshAppAppearance() {
         val nextNight = resolveAppNightNow(darkMode)
         if (nextNight == appNight) return
@@ -3180,6 +3196,45 @@ class CarPlayHostActivity : ComponentActivity() {
         val manualFields = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+
+        // One-tap read of the running hotspot config (SSID/passphrase/channel) over the local adbd.
+        val readHotspotButton = Button(this).apply {
+            setText(R.string.read_car_hotspot)
+            isAllCaps = false
+            setOnClickListener {
+                Thread {
+                    val reading = CarHotspotConfigReader.read(this@CarPlayHostActivity)
+                    runOnUiThread {
+                        if (reading.isEmpty) {
+                            Toast.makeText(
+                                this@CarPlayHostActivity,
+                                R.string.read_car_hotspot_failed,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            reading.ssid?.let { manualHotspotSsid = it }
+                            reading.passphrase?.let { manualHotspotPassphrase = it }
+                            reading.channel?.let { manualHotspotChannel = it }
+                            manualHotspotErrorView?.visibility = View.GONE
+                            Toast.makeText(
+                                this@CarPlayHostActivity,
+                                R.string.read_car_hotspot_done,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            reinstallSettingsMenu()
+                        }
+                    }
+                }.apply { isDaemon = true }.start()
+            }
+        }
+        manualFields.addView(
+            readHotspotButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+
         manualFields.addView(
             settingsInputRow(getString(R.string.hotspot_ssid), manualHotspotSsid) { value ->
                 manualHotspotSsid = value

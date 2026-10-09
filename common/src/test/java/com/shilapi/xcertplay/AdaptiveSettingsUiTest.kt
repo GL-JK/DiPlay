@@ -307,7 +307,7 @@ class AdaptiveSettingsUiTest {
 
     @Test
     @Config(shadows = [HotspotSearchProbe::class])
-    fun hotspotSearchKeepsTheBydAndCarHotspotAudienceGates() {
+    fun hotspotSearchKeepsTheManualHotspotAudienceGate() {
         installBydSettingsPackage()
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.EXISTING_WIFI)
         HotspotSearchProbe.workers.clear()
@@ -315,12 +315,15 @@ class AdaptiveSettingsUiTest {
         val screen = openSettings()
         fun index() = ReflectionHelpers.callInstanceMethod<List<DiPlayActivity.SettingsSearchResult>>(
             screen, "buildSettingsSearchIndex")
-        val title = screen.getString(R.string.auto_car_hotspot_title)
+        val hotspotTitle = screen.getString(R.string.auto_car_hotspot_title)
+        val portTitle = screen.getString(R.string.adb_port_label)
 
-        assertFalse(index().any { it.title == title })
+        // The port entry is offered in every mode; the hotspot toggle is only a manual-hotspot thing.
+        assertTrue(index().any { it.title == portTitle })
+        assertFalse(index().any { it.title == hotspotTitle })
         AirPlayPersistence.saveWirelessHotspotMode(context, WirelessHotspotMode.MANUAL)
         shadowOf(context.packageManager).removePackage("com.byd.carsettings")
-        assertFalse(index().any { it.title == title })
+        assertTrue(index().any { it.title == hotspotTitle })
         assertTrue(HotspotSearchProbe.workers.isEmpty())
     }
 
