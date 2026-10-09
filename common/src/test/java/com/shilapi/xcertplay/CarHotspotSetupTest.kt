@@ -47,9 +47,11 @@ class CarHotspotSetupTest {
         assertFalse(CarHotspotSetup.isBydHeadUnit(context))
     }
 
-    @Test fun genericHeadUnitRemainsHiddenEvenWithAdbReady() {
+    @Test fun genericHeadUnitAlsoSeesTheSettingWhenAdbIsReady() {
+        // Non-BYD units (e.g. SGMW) now need the same ADB path for hotspot/channel work.
         assertFalse(CarHotspotSetup.isBydHeadUnit(context))
-        assertFalse(CarHotspotSettings.visible(CarHotspotSetup.isBydHeadUnit(context), LocalAdb.Access.READY))
+        assertTrue(CarHotspotSettings.visible(CarHotspotSetup.isBydHeadUnit(context), LocalAdb.Access.READY))
+        assertTrue(CarHotspotSettings.visible(false, LocalAdb.Access.NOT_APPROVED))
     }
 
     @Test fun existingNavigationBasedDetectionIsPreserved() {
@@ -58,14 +60,15 @@ class CarHotspotSetupTest {
         assertTrue(CarHotspotSetup.isBydHeadUnit(context))
     }
 
-    @Test fun onlyBydWithSupportedAdbSeesTheSettingIncludingBeforeApproval() {
-        for (access in LocalAdb.Access.entries) {
-            assertFalse(CarHotspotSettings.visible(false, access))
-        }
+    @Test fun theSettingFollowsAdbAvailabilityRegardlessOfBrand() {
+        // Brand no longer gates visibility: an answered (or approvable) local adbd is enough.
         assertTrue(CarHotspotSettings.visible(true, LocalAdb.Access.NOT_APPROVED))
         assertTrue(CarHotspotSettings.visible(true, LocalAdb.Access.READY))
+        assertTrue(CarHotspotSettings.visible(false, LocalAdb.Access.NOT_APPROVED))
+        assertTrue(CarHotspotSettings.visible(false, LocalAdb.Access.READY))
         assertFalse(CarHotspotSettings.visible(true, LocalAdb.Access.UNREACHABLE))
         assertFalse(CarHotspotSettings.visible(true, LocalAdb.Access.UNSUPPORTED))
+        assertFalse(CarHotspotSettings.visible(false, LocalAdb.Access.UNREACHABLE))
     }
 
     @Test fun losingAdbHidesTheSettingWithoutClearingOrDisablingTheSavedChoice() {

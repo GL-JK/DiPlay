@@ -772,5 +772,12 @@
     <string name="conn_value">%1$s · %2$s 秒</string>
     <string name="conn_step_line">%1$s — %2$s</string>
 
+    <string name="read_car_hotspot">从车机读取</string>
+    <string name="adb_port_label">本地 ADB 端口</string>
+    <string name="adb_port_live">实测: %1$d</string>
+    <string name="adb_port_probe">探测本机 ADB 端口</string>
+    <string name="read_car_hotspot_done">已从车机读取热点信息</string>
+    <string name="read_car_hotspot_failed">读取热点信息失败（本地 ADB 不可用）</string>
+
     <string name="conn_connected">已连接</string>
 </resources>

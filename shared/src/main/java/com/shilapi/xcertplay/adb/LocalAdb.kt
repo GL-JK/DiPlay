@@ -20,15 +20,21 @@ import java.util.concurrent.atomic.AtomicBoolean
  * adbd trusts a key once the driver approves it in the car's "Allow debugging?" dialog. Only
  * [connect] with `mayAsk = true` offers the key for approval. Background use never does, so the
  * dialog cannot appear while driving.
+ *
+ * Car firmware frequently exposes its local adbd on a non-default TCP port (the SGMW head unit uses
+ * 5557). [connect] therefore tries [port] first and then [candidatePorts] in order, remembering the
+ * one that answered.
  */
 class LocalAdb(
     private val key: KeyPair,
     private val host: String = "127.0.0.1",
     private val port: Int = 5555,
+    private val candidatePorts: List<Int> = emptyList(),
 ) : Closeable {
     enum class Access { READY, NOT_APPROVED, UNREACHABLE, UNSUPPORTED }
 
     @Volatile private var socket: Socket? = null
+    @Volatile private var activePort: Int = port
     private val cancelled = AtomicBoolean(false)
     private var input: InputStream? = null
     private var output: OutputStream? = null
@@ -38,6 +44,25 @@ class LocalAdb(
     fun connect(mayAsk: Boolean): Access {
         if (cancelled.get()) return Access.UNREACHABLE
         if (socket?.isClosed == false) return Access.READY
+        // Try the configured port first, then every advertised candidate (deduplicated).
+        val ports = (listOf(port) + candidatePorts).distinct().filter { it in 1..65535 }
+        var last = Access.UNREACHABLE
+        for (candidate in ports) {
+            val result = connectOn(candidate, mayAsk)
+            when (result) {
+                Access.READY -> return Access.READY
+                // A rejected key is meaningful: report it rather than a plain unreachable port.
+                Access.NOT_APPROVED -> last = Access.NOT_APPROVED
+                else -> Unit
+            }
+        }
+        return last
+    }
+
+    @Synchronized
+    private fun connectOn(port: Int, mayAsk: Boolean): Access {
+        if (cancelled.get()) return Access.UNREACHABLE
+        activePort = port
         return try {
             val address = InetSocketAddress(host, port)
             val opened = Socket().also { socket = it }.apply {
@@ -137,7 +162,7 @@ class LocalAdb(
                 } catch (_: SocketTimeoutException) {
                     pendingInput.reset()
                     // 部分车机保存了授权密钥，却不唤醒原连接；只用已保存的密钥检查，不再弹窗。
-                    val approved = LocalAdb(key, host, port).use { it.connect(mayAsk = false) == Access.READY }
+                    val approved = LocalAdb(key, host, activePort).use { it.connect(mayAsk = false) == Access.READY }
                     if (approved) {
                         closeQuietly()
                         return connect(mayAsk = false)
