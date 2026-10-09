@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Opaque dialog backgrounds. Some firmware window managers draw a transparent dialog when the
+         activity theme is translucent; these give the dialog an explicit surface colour. -->
+    <color name="dialog_background_dark">#151E2C</color>
+    <color name="dialog_background_light">#F8FAFD</color>
+</resources>
