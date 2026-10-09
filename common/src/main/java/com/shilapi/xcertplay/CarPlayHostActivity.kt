@@ -80,6 +80,7 @@ import com.shilapi.xcertplay.media.AndroidMediaSink
 import com.shilapi.xcertplay.media.CarPlayTouchMapper
 import com.shilapi.xcertplay.media.CarPlayVideoLayout
 import com.shilapi.xcertplay.network.CarPlayVpnService
+import com.shilapi.xcertplay.orchestration.ConnectionProgress
 import com.shilapi.xcertplay.orchestration.CarPlayController
 import com.shilapi.xcertplay.orchestration.CarPlayRuntimeConfig
 import com.shilapi.xcertplay.network.WirelessStartupFailure
@@ -300,6 +301,9 @@ class CarPlayHostActivity : ComponentActivity() {
     private var statusView: TextView? = null
     private var statusScrollView: ScrollView? = null
     private var stageStatusView: TextView? = null
+    private var connectionProgress: ConnectionProgressPanel? = null
+    /** The restart generation the panel's clock was last started for (-1 = never started). */
+    private var progressClockGeneration = -1
     private var resolutionValueView: TextView? = null
     private var resolutionPreviewView: TextView? = null
     private var hotspotStatusView: TextView? = null
@@ -1367,6 +1371,9 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        connectionProgress?.stop(mainHandler)
+        connectionProgress = null
+        progressClockGeneration = -1
         resetSidePanel()
         hostAppearanceResumed = false
         AppAppearanceRuntime.clearHost(this)
@@ -1450,6 +1457,9 @@ class CarPlayHostActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
         panel.addView(stage)
+        val progressPanel = ConnectionProgressPanel(this, resources.displayMetrics.density)
+        connectionProgress = progressPanel
+        panel.addView(progressPanel.view, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(4) })
         val instructions = TextView(this).apply {
             text = if (wirelessEnabled) getString(R.string.keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow)
                 else getString(R.string.use_a_usb_data_cable_and_unlock_your_iphone_allow_trust_an)
@@ -1498,6 +1508,7 @@ class CarPlayHostActivity : ComponentActivity() {
             stage.setTextColor(colors.text)
             instructions.setTextColor(colors.secondary)
             gestureHint.setTextColor(colors.secondary)
+            connectionProgress?.paint(darkMode)
             val buttonPalette = DiPlayPalette.of(darkMode)
             back.setTextColor(buttonPalette.onAccent)
             back.background = GradientDrawable().apply {
@@ -1545,8 +1556,10 @@ class CarPlayHostActivity : ComponentActivity() {
         fun fitPreparationContent() {
             val availableHeight = viewport.height - viewport.paddingTop - viewport.paddingBottom
             if (panel.height <= 0 || availableHeight <= 0) return
-            val landscape = viewport.width - viewport.paddingLeft - viewport.paddingRight > availableHeight
-            val scale = if (landscape) minOf(1f, availableHeight.toFloat() / panel.height) else 1f
+            // The waiting panel is measured at its natural height and the viewport never scrolls,
+            // so anything that does not fit would be clipped at both ends. Shrink uniformly when
+            // it overflows, on short screens as well as landscape ones.
+            val scale = minOf(1f, availableHeight.toFloat() / panel.height)
             panel.scaleX = scale
             panel.scaleY = scale
         }
@@ -3953,6 +3966,8 @@ class CarPlayHostActivity : ComponentActivity() {
                     activeAirPlaySession = session
                     CarPlayBackgroundSession.active = true
                     reconnectAttempts = 0
+                    // The session is up: the progress block is finished work now.
+                    markConnectionProgressComplete()
                     logThemeState(ThemeModeDiagnostics.Source.SESSION_ACTIVE, resources.configuration)
                     syncAirPlayDarkMode(ThemeModeDiagnostics.Source.SESSION_ACTIVE)
                     applyClusterTurnOverlay()
@@ -4053,6 +4068,7 @@ class CarPlayHostActivity : ComponentActivity() {
         updateHotspotStatus(status)
         val description = status.describe()
         setConnectionStage(description)
+        updateConnectionProgress(status)
         when (status) {
             is CarPlayStatus.Failed -> if (status.wifiResetRequired) {
                 wifiRecoveryButton?.visibility = View.VISIBLE
@@ -4978,6 +4994,29 @@ class CarPlayHostActivity : ComponentActivity() {
         latestStage = message
         stageStatusView?.text = friendlyStage(message)
         updateDebugOverlays()
+    }
+
+    /** W6: feed the same status stream into the step list, bar and clock. */
+    private fun updateConnectionProgress(status: CarPlayStatus) {
+        val panel = connectionProgress ?: return
+        // One clock per connection attempt. A fresh attempt is a fresh restartGeneration, which the
+        // host already bumps whenever it rebuilds the stack; that is authoritative, unlike guessing
+        // from the step number. Rotating the device restarts the stack, so the counter resets there
+        // too -- which is correct, because the reconnect really does start from scratch.
+        if (progressClockGeneration != restartGeneration) {
+            progressClockGeneration = restartGeneration
+            panel.begin(mainHandler)
+        }
+        if (ConnectionProgress.isConnected(status)) {
+            panel.complete(mainHandler)
+        } else {
+            panel.update(status)
+        }
+    }
+
+    /** The AirPlay session is up: freeze the progress block at 100% and stop its clock. */
+    private fun markConnectionProgressComplete() {
+        connectionProgress?.complete(mainHandler)
     }
 
     private fun updateDebugOverlays() {

@@ -26,7 +26,7 @@ object BydStarterBridge {
     private var lastNotice: String? = null
 
     @Synchronized fun initialize(context: Context) {
-        if (context.packageName !in setOf("com.andrerinas.headunitrevived.bydhudtest", "com.shihab.diplay.hudtest") || started) return
+        if (context.packageName !in setOf("com.andrerinas.headunitrevived.bydhudtest", "com.shihab.diplay.hudtest") || !BydOutputSettings.isBydFirmware() || started) return
         val saved = context.getSharedPreferences("hud_starter", Context.MODE_PRIVATE).getString("token", null)
         token = decodeToken(saved)
         started = true
